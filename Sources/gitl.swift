@@ -8,27 +8,25 @@ struct gitl: ParsableCommand {
 	@Flag var force: Bool = false
 
 	func run() throws {
-		if let repo = Repo.read() {
-			switch verb {
-			case "load": shell("git fetch --all -p")
-			case "send": shell("git push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
-			case "name": shell("git branch -m \(noun ?? "main")")
-			case "mkbr": shell("git checkout -b \(noun ?? "main")")
-			case "sel": shell("git checkout \(noun ?? "main")")
-			case "mov": shell("git reset --hard \(noun ?? "main")")
-			case "base": shell("git rebase \(noun ?? "main")")
-			case "rec", "edit":
-				let amend = verb == "edit" ? "--amend " : ""
-				let msg = noun ?? "WIP"
-				let taskMsg = repo.current.task.map { "[\($0)] \(msg)" } ?? msg
-				shell("git add . && git commit \(amend)-m \"\(taskMsg)\"")
-			default: return print(repo)
-			}
+		guard let repo = Repo.read() else { return print("Not a git repository") }
 
-			if let repo = Repo.read() { print(repo) }
-		} else {
-			print("Not a git repository")
+		switch verb {
+		case "load": shell("git fetch --all -p")
+		case "send": shell("git push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
+		case "name": shell("git branch -m \(noun ?? "main")")
+		case "mkbr": shell("git checkout -b \(noun ?? "main")")
+		case "sel": shell("git checkout \(noun ?? "main")")
+		case "mov": shell("git reset --hard \(noun ?? "main")")
+		case "base": shell("git rebase \(noun ?? "main")")
+		case "rec", "edit":
+			let amend = verb == "edit" ? "--amend " : ""
+			let msg = noun ?? "WIP"
+			let taskMsg = repo.current.task.map { "[\($0)] \(msg)" } ?? msg
+			shell("git add . && git commit \(amend)-m \"\(taskMsg)\"")
+		default: break
 		}
+
+		if let repo = Repo.read() { print(repo) }
 	}
 }
 
