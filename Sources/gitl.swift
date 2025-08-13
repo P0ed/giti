@@ -7,37 +7,34 @@ struct gitl: ParsableCommand {
 	@Argument var noun: String?
 	@Flag var force: Bool = false
 
-	func run() throws {
-		guard let repo = Repo.read() else { return print("Not a git repository") }
+	mutating func run() throws {
+		if Repo.status == nil { throw "Not a git repository" }
 
 		switch verb {
-		case "load": shell("git fetch --all -p")
-		case "send": shell("git push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
-		case "name": shell("git branch -m \(noun ?? "main")")
-		case "mkbr": shell("git checkout -b \(noun ?? "main")")
-		case "sel": shell("git checkout \(noun ?? "main")")
-		case "mov": shell("git reset --hard \(noun ?? "main")")
-		case "base": shell("git rebase \(noun ?? "main")")
-		case "rec", "edit":
-			let amend = verb == "edit" ? "--amend " : ""
-			let msg = noun ?? "WIP"
-			let taskMsg = repo.current.task.map { "[\($0)] \(msg)" } ?? msg
-			shell("git add . && git commit \(amend)-m \"\(taskMsg)\"")
-		default: break
+		case "load": try git("fetch --all -p")
+		case "send": try git("push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
+		case "name": try git("branch -m \(noun ?? "main")")
+		case "mkbr": try git("checkout -b \(noun ?? "main")")
+		case "chbr": try git("checkout \(noun ?? "main")")
+		case "set": try git("reset --hard \(noun ?? "main")")
+		case "mov": try git("rebase \(noun ?? "main")" + (force ? " -f" : ""))
+		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
+		case "rec", "edit": try git("add .", "commit \(verb == "edit" ? "--amend " : "")-m \"\(noun ?? "WIP")\"")
+		case let .some(verb): throw "Unknown verb: \(verb)"
+		case .none: break
 		}
 
-		if let repo = Repo.read() { print(repo) }
+		try print(Repo())
 	}
 }
 
-struct Repo: Codable {
+struct Repo {
 	var changes: String
 	var branches: [Branch]
-	var current: Branch
 	var tree: [String]
 }
 
-struct Branch: Codable {
+struct Branch {
 	var name: String
 	var isCurrent: Bool
 
@@ -49,18 +46,17 @@ struct Branch: Codable {
 
 extension Repo: CustomStringConvertible {
 
-	static func read() -> Repo? {
-		let changes = shell("git diff")
-		if changes.hasPrefix("fatal: not a git repository") { return nil }
+	var current: Branch? { branches.first(where: \.isCurrent) }
+	static var status: String? { try? git("status") }
 
-		let branches = shell("git branch").split(separator: "\n").map { x in Branch(String(x)) }
-		guard let current = branches.first(where: \.isCurrent) else { return nil }
-
-		let tree = shell("git log --graph --oneline --decorate --all -36")
-			.split(separator: "\n")
-			.map(String.init)
-
-		return Repo(changes: changes, branches: branches, current: current, tree: tree)
+	init() throws {
+		self = try Repo(
+			changes: git("diff"),
+			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
+			tree: git("log --graph --oneline --decorate --all -36")
+				.split(separator: "\n")
+				.map(String.init)
+		)
 	}
 
 	var description: String {
@@ -71,36 +67,29 @@ extension Repo: CustomStringConvertible {
 	}
 }
 
-extension Branch {
-
-	var task: String? {
-		let s = name.split(separator: "-")
-		return s.count < 2 ? nil : Int(s[1]).map { n in s[0] + "-" + n.description }
-	}
-}
-
 extension String: @retroactive Error {}
 
 @discardableResult
-func shell(_ cmd: String) -> String {
-	let task = Process()
+func shell(_ cmd: String) throws -> String {
+	let process = Process()
 	let pipe = Pipe()
 
-	task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-	task.standardInput = nil
-	task.standardOutput = pipe
-	task.standardError = pipe
+	process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+	process.standardInput = nil
+	process.standardOutput = pipe
+	process.standardError = pipe
 
-	task.arguments = ["-c", cmd]
+	process.arguments = ["-c", cmd]
 
-	do {
-		try task.run()
-		task.waitUntilExit()
-		let data = pipe.fileHandleForReading.readDataToEndOfFile()
-		let output = String(data: data, encoding: .utf8)!
+	try process.run()
+	process.waitUntilExit()
+	let data = pipe.fileHandleForReading.readDataToEndOfFile()
+	let output = String(data: data, encoding: .utf8)!.trimmingCharacters(in: .newlines)
 
-		return output.trimmingCharacters(in: .newlines)
-	} catch {
-		return String(describing: error)
-	}
+	if process.terminationStatus == 0 { return output } else { throw output }
+}
+
+@discardableResult
+func git(_ cmds: String...) throws -> String {
+	try shell(cmds.map { "git " + $0 }.joined(separator: " && "))
 }
