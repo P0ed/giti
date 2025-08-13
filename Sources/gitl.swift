@@ -3,21 +3,34 @@ import ArgumentParser
 
 @main
 struct gitl: ParsableCommand {
-	@Argument
-	var verb: String?
-	@Argument
-	var noun: String?
+	@Argument var verb: String?
+	@Argument var noun: String?
+	@Flag var force: Bool = false
 
 	func run() throws {
-		var repo: Repo? = .read()
-		if repo == nil { return print("Not a git repository") }
-		repo?.apply(verb: verb, noun: noun)
-		repo = .read()
-		repo?.list()
+		if let repo = Repo.read() {
+			switch verb {
+			case "load": shell("git fetch --all -p")
+			case "send": shell("git push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
+			case "name": shell("git branch -m \(noun ?? "main")")
+			case "mkbr": shell("git checkout -b \(noun ?? "main")")
+			case "sel": shell("git checkout \(noun ?? "main")")
+			case "mov": shell("git reset --hard \(noun ?? "main")")
+			case "base": shell("git rebase \(noun ?? "main")")
+			case "rec", "edit":
+				let amend = verb == "edit" ? "--amend " : ""
+				let msg = noun ?? "WIP"
+				let taskMsg = repo.current.task.map { "[\($0)] \(msg)" } ?? msg
+				shell("git add . && git commit \(amend)-m \"\(taskMsg)\"")
+			default: return print(repo)
+			}
+
+			if let repo = Repo.read() { print(repo) }
+		} else {
+			print("Not a git repository")
+		}
 	}
 }
-
-extension String: @retroactive Error {}
 
 struct Repo: Codable {
 	var changes: String
@@ -36,7 +49,7 @@ struct Branch: Codable {
 	}
 }
 
-extension Repo {
+extension Repo: CustomStringConvertible {
 
 	static func read() -> Repo? {
 		let changes = shell("git diff")
@@ -52,70 +65,26 @@ extension Repo {
 		return Repo(changes: changes, branches: branches, current: current, tree: tree)
 	}
 
-	func apply(verb: String?, noun: String?) {
-		switch verb {
-		case "load": load()
-		case "send": send(force: noun == "rewrite")
-		case "rec", "edit": rec(msg: noun, amend: verb == "edit")
-		case "name": name(noun)
-		case "mkbr": mkbr(name: noun)
-		case "sel": sel(name: noun)
-		case "mov": mov(dst: noun)
-		case "base": base(dst: noun)
-		default: break
-		}
-	}
-
-	func load() {
-		_ = shell("git fetch --all -p")
-	}
-
-	func send(force: Bool) {
-		_ = shell("git push origin HEAD" + (force ? " -f" : ""))
-	}
-
-	func list() {
+	var description: String {
 		let changesCount = changes.count
-		if changesCount > 0 { print("+ \(changesCount) unrecorded changes") }
+		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes" : ""
 
-		print(tree.joined(separator: "\n"))
-	}
-
-	func name(_ name: String?) {
-		_ = shell("git branch -m \(name ?? "main")")
-	}
-
-	func mkbr(name: String?) {
-		_ = shell("git checkout -b \(name ?? "main")")
-	}
-
-	func sel(name: String?) {
-		_ = shell("git checkout \(name ?? "main")")
-	}
-
-	func mov(dst: String?) {
-		_ = shell("git reset --hard \(dst ?? "main")")
-	}
-
-	func base(dst: String?) {
-		_ = shell("git rebase \(dst ?? "main")")
-	}
-
-	func rec(msg: String?, amend: Bool = false) {
-		let msg = msg ?? "WIP"
-		let taskMsg = current.task.map { "[\($0)] \(msg)" } ?? msg
-		_ = shell("git add . && git commit \(amend ? "--amend " : "")-m \"\(taskMsg)\"")
+		return ([chs] + tree).joined(separator: "\n")
 	}
 }
 
 extension Branch {
+
 	var task: String? {
 		let s = name.split(separator: "-")
 		return s.count < 2 ? nil : Int(s[1]).map { n in s[0] + "-" + n.description }
 	}
 }
 
-let shell: @Sendable (String) -> String = { cmd in
+extension String: @retroactive Error {}
+
+@discardableResult
+func shell(_ cmd: String) -> String {
 	let task = Process()
 	let pipe = Pipe()
 
