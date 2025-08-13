@@ -23,6 +23,7 @@ struct Repo: Codable {
 	var changes: String
 	var branches: [Branch]
 	var current: Branch
+	var tree: [String]
 }
 
 struct Branch: Codable {
@@ -44,13 +45,17 @@ extension Repo {
 		let branches = shell("git branch").split(separator: "\n").map { x in Branch(String(x)) }
 		guard let current = branches.first(where: \.isCurrent) else { return nil }
 
-		return Repo(changes: changes, branches: branches, current: current)
+		let tree = shell("git log --graph --oneline --decorate --all -36")
+			.split(separator: "\n")
+			.map(String.init)
+
+		return Repo(changes: changes, branches: branches, current: current, tree: tree)
 	}
 
 	func apply(verb: String?, noun: String?) {
 		switch verb {
 		case "load": load()
-		case "send": send(force: noun == "force" || noun == "f")
+		case "send": send(force: noun == "rewrite" || noun == "force")
 		case "rec", "edit": rec(msg: noun, amend: verb == "edit")
 		case "name": name(noun)
 		case "mkbr": mkbr(name: noun)
@@ -73,7 +78,7 @@ extension Repo {
 		let changesCount = changes.count
 		if changesCount > 0 { print("+ \(changesCount) unrecorded changes") }
 
-		pshell("git log --graph --oneline --decorate --all -36")
+		print(tree.joined(separator: "\n"))
 	}
 
 	func name(_ name: String?) {
