@@ -55,7 +55,7 @@ extension Repo {
 	func apply(verb: String?, noun: String?) {
 		switch verb {
 		case "load": load()
-		case "send": send(force: noun == "rewrite" || noun == "force")
+		case "send": send(force: noun == "rewrite")
 		case "rec", "edit": rec(msg: noun, amend: verb == "edit")
 		case "name": name(noun)
 		case "mkbr": mkbr(name: noun)
