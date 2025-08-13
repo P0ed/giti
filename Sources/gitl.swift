@@ -8,10 +8,8 @@ struct gitl: ParsableCommand {
 	@Argument
 	var noun: String?
 
-	var repo: Repo?
-
-	mutating func run() throws {
-		repo = .read()
+	func run() throws {
+		var repo: Repo? = .read()
 		if repo == nil { return print("Not a git repository") }
 		repo?.apply(verb: verb, noun: noun)
 		repo = .read()
@@ -31,9 +29,9 @@ struct Branch: Codable {
 	var name: String
 	var isCurrent: Bool
 
-	init(_ name: String) {
-		self.name = name.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
-		isCurrent = name.hasPrefix("*")
+	init(_ branch: String) {
+		name = branch.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
+		isCurrent = branch.hasPrefix("*")
 	}
 }
 
@@ -79,28 +77,23 @@ extension Repo {
 	}
 
 	func name(_ name: String?) {
-		let name = name ?? "main"
-		_ = shell("git branch -m \(name)")
+		_ = shell("git branch -m \(name ?? "main")")
 	}
 
 	func mkbr(name: String?) {
-		let name = name ?? "main"
-		_ = shell("git checkout -b \(name)")
+		_ = shell("git checkout -b \(name ?? "main")")
 	}
 
 	func sel(name: String?) {
-		let name = name ?? "main"
-		_ = shell("git checkout \(name)")
+		_ = shell("git checkout \(name ?? "main")")
 	}
 
 	func mov(dst: String?) {
-		let dst = dst ?? "main"
-		_ = shell("git reset --hard \(dst)")
+		_ = shell("git reset --hard \(dst ?? "main")")
 	}
 
 	func base(dst: String?) {
-		let dst = dst ?? "main"
-		_ = shell("git rebase \(dst)")
+		_ = shell("git rebase \(dst ?? "main")")
 	}
 
 	func rec(msg: String?, amend: Bool = false) {
@@ -113,7 +106,6 @@ extension Repo {
 extension Branch {
 	var task: String? {
 		let s = name.split(separator: "-")
-
 		return s.count < 2 ? nil : Int(s[1]).map { n in s[0] + "-" + n.description }
 	}
 }
