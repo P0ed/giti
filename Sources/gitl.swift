@@ -11,9 +11,45 @@ struct gitl: ParsableCommand {
 	var repo: Repo?
 
 	mutating func run() throws {
-		repo = Repo()
+		repo = .read()
 		if repo == nil { return print("Not a git repository") }
+		repo?.apply(verb: verb, noun: noun)
+		repo = .read()
+		repo?.list()
+	}
+}
 
+extension String: @retroactive Error {}
+
+struct Repo: Codable {
+	var changes: String
+	var branches: [Branch]
+	var current: Branch
+}
+
+struct Branch: Codable {
+	var name: String
+	var isCurrent: Bool
+
+	init(_ name: String) {
+		self.name = name.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
+		isCurrent = name.hasPrefix("*")
+	}
+}
+
+extension Repo {
+
+	static func read() -> Repo? {
+		let changes = shell("git diff")
+		if changes.hasPrefix("fatal: not a git repository") { return nil }
+
+		let branches = shell("git branch").split(separator: "\n").map { x in Branch(String(x)) }
+		guard let current = branches.first(where: \.isCurrent) else { return nil }
+
+		return Repo(changes: changes, branches: branches, current: current)
+	}
+
+	func apply(verb: String?, noun: String?) {
 		switch verb {
 		case "load": load()
 		case "send": send(force: noun == "force" || noun == "f")
@@ -25,30 +61,20 @@ struct gitl: ParsableCommand {
 		case "base": base(dst: noun)
 		default: break
 		}
-		info()
 	}
 
-	mutating func info() {
-		repo = Repo()
-		changes()
-		list()
-	}
-
-	mutating func load() {
+	func load() {
 		_ = shell("git fetch --all -p")
-		info()
 	}
 
 	func send(force: Bool) {
 		_ = shell("git push origin HEAD" + (force ? " -f" : ""))
 	}
 
-	func changes() {
-		let changesCount = repo?.changes.count ?? 0
-		if changesCount > 0 { print("* - unrecorded changes \(changesCount)") }
-	}
-
 	func list() {
+		let changesCount = changes.count
+		if changesCount > 0 { print("+ \(changesCount) unrecorded changes") }
+
 		pshell("git log --graph --oneline --decorate --all -36")
 	}
 
@@ -79,38 +105,8 @@ struct gitl: ParsableCommand {
 
 	func rec(msg: String?, amend: Bool = false) {
 		let msg = msg ?? "WIP"
-		let taskMsg = repo?.current.task.map { "[\($0)] \(msg)" } ?? msg
+		let taskMsg = current.task.map { "[\($0)] \(msg)" } ?? msg
 		_ = shell("git add . && git commit \(amend ? "--amend " : "")-m \"\(taskMsg)\"")
-	}
-}
-
-extension String: @retroactive Error {}
-
-struct Repo: Codable {
-	var changes: String
-	var branches: [Branch]
-	var current: Branch
-
-	init?() {
-		let changes = shell("git diff")
-		if changes.hasPrefix("fatal: not a git repository") { return nil }
-
-		let branches = shell("git branch").split(separator: "\n").map { x in Branch(String(x)) }
-		guard let current = branches.first(where: \.isCurrent) else { return nil }
-
-		self.changes = changes
-		self.branches = branches
-		self.current = current
-	}
-}
-
-struct Branch: Codable {
-	var name: String
-	var isCurrent: Bool
-
-	init(_ name: String) {
-		self.name = name.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
-		isCurrent = name.hasPrefix("*")
 	}
 }
 
