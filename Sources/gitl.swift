@@ -65,9 +65,9 @@ extension Repo: CustomStringConvertible {
 
 	var description: String {
 		let changesCount = changes.count
-		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes" : ""
+		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes\n" : ""
 
-		return ([chs] + tree).joined(separator: "\n")
+		return chs + tree.joined(separator: "\n")
 	}
 }
 
