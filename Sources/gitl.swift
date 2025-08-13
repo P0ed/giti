@@ -1,5 +1,5 @@
-import ArgumentParser
 import Foundation
+import ArgumentParser
 
 @main
 struct gitl: ParsableCommand {
@@ -112,5 +112,28 @@ extension Branch {
 	var task: String? {
 		let s = name.split(separator: "-")
 		return s.count < 2 ? nil : Int(s[1]).map { n in s[0] + "-" + n.description }
+	}
+}
+
+let shell: @Sendable (String) -> String = { cmd in
+	let task = Process()
+	let pipe = Pipe()
+
+	task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+	task.standardInput = nil
+	task.standardOutput = pipe
+	task.standardError = pipe
+
+	task.arguments = ["-c", cmd]
+
+	do {
+		try task.run()
+		task.waitUntilExit()
+		let data = pipe.fileHandleForReading.readDataToEndOfFile()
+		let output = String(data: data, encoding: .utf8)!
+
+		return output.trimmingCharacters(in: .newlines)
+	} catch {
+		return String(describing: error)
 	}
 }
