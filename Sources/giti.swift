@@ -2,7 +2,7 @@ import Foundation
 import ArgumentParser
 
 @main
-struct gitl: ParsableCommand {
+struct giti: ParsableCommand {
 	@Argument var verb: String?
 	@Argument var noun: String?
 	@Flag var force: Bool = false
@@ -19,7 +19,10 @@ struct gitl: ParsableCommand {
 		case "set": try git("reset --hard \(noun ?? "main")")
 		case "mov": try git("rebase \(noun ?? "main")" + (force ? " -f" : ""))
 		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
-		case "rec", "edit": try git("add .", "commit \(verb == "edit" ? "--amend " : "")-m \"\(noun ?? "WIP")\"")
+		case "rec", "edit":
+			let edit = verb == "edit"
+			let msg = try noun ?? (edit ? shell("git log -1 --pretty=%B") : "WIP")
+			try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
 		case let .some(verb): throw "Unknown verb: \(verb)"
 		case .none: break
 		}
