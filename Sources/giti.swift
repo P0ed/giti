@@ -19,15 +19,20 @@ struct giti: ParsableCommand {
 		case "set": try git("reset --hard \(noun ?? "main")")
 		case "mov": try git("rebase \(noun ?? "main")" + (force ? " -f" : ""))
 		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
-		case "rec", "edit":
-			let edit = verb == "edit"
-			let msg = try noun ?? (edit ? shell("git log -1 --pretty=%B") : "WIP")
-			try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
+		case "rec", "edit": try rec(edit: verb == "edit", message: noun)
 		case let .some(verb): throw "Unknown verb: \(verb)"
 		case .none: break
 		}
 
 		try print(Repo())
+	}
+
+	func rec(edit: Bool, message: String?) throws {
+		let repo = try Repo()
+		let edit = verb == "edit"
+		let msg = try noun ?? (edit ? git("log -1 --pretty=%B") : "WIP")
+		let decoratedMsg = repo.current?.task.map { task in "[\(task)] \(msg)" } ?? msg
+		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(decoratedMsg)\"")
 	}
 }
 
@@ -44,6 +49,11 @@ struct Branch {
 	init(_ branch: String) {
 		name = branch.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
 		isCurrent = branch.hasPrefix("*")
+	}
+
+	var task: String? {
+		let s = name.split(separator: "-")
+		return s.count < 2 ? nil : Int(s[1]).map { i in "\(s[0])-\(i)" }
 	}
 }
 
