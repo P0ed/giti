@@ -8,7 +8,7 @@ struct giti: ParsableCommand {
 	@Flag var force: Bool = false
 
 	mutating func run() throws {
-		if Repo.status == nil { throw "Not a git repository" }
+		let _ = try Repo.status()
 
 		switch verb {
 		case "load": try git("fetch --all -p")
@@ -29,10 +29,9 @@ struct giti: ParsableCommand {
 
 	func rec(edit: Bool, message: String?) throws {
 		let repo = try Repo()
-		let edit = verb == "edit"
-		let msg = try noun ?? (edit ? git("log -1 --pretty=%B") : "WIP")
-		let decoratedMsg = repo.current?.task.map { task in "[\(task)] \(msg)" } ?? msg
-		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(decoratedMsg)\"")
+		let msg = try message ?? (edit ? git("log -1 --pretty=%B") : "WIP")
+		let decorated = repo.current?.task.map { task in "[\(task)] \(msg)" } ?? msg
+		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(decorated)\"")
 	}
 }
 
@@ -60,7 +59,7 @@ struct Branch {
 extension Repo: CustomStringConvertible {
 
 	var current: Branch? { branches.first(where: \.isCurrent) }
-	static var status: String? { try? git("status") }
+	static func status() throws -> String { try git("status") }
 
 	init() throws {
 		self = try Repo(
@@ -68,6 +67,7 @@ extension Repo: CustomStringConvertible {
 			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
 			tree: git("log --graph --oneline --decorate --all -36")
 				.split(separator: "\n")
+				.prefix(36)
 				.map(String.init)
 		)
 	}
