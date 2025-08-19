@@ -29,9 +29,8 @@ struct giti: ParsableCommand {
 
 	func rec(edit: Bool, message: String?) throws {
 		let repo = try Repo()
-		let msg = try message ?? (edit ? git("log -1 --pretty=%B") : "WIP")
-		let decorated = repo.current?.task.map { task in "[\(task)] \(msg)" } ?? msg
-		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(decorated)\"")
+		let msg = taskDecorator(repo)(message ?? (edit ? repo.last : "WIP"))
+		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
 	}
 }
 
@@ -39,6 +38,7 @@ struct Repo {
 	var changes: String
 	var branches: [Branch]
 	var tree: [String]
+	var last: String
 }
 
 struct Branch {
@@ -48,11 +48,6 @@ struct Branch {
 	init(_ branch: String) {
 		name = branch.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
 		isCurrent = branch.hasPrefix("*")
-	}
-
-	var task: String? {
-		let s = name.split(separator: "-")
-		return s.count < 2 ? nil : Int(s[1]).map { i in "\(s[0])-\(i)" }
 	}
 }
 
@@ -68,7 +63,8 @@ extension Repo: CustomStringConvertible {
 			tree: git("log --graph --oneline --decorate --all -36")
 				.split(separator: "\n")
 				.prefix(36)
-				.map(String.init)
+				.map(String.init),
+			last: git("log -1 --pretty=%B")
 		)
 	}
 
@@ -105,4 +101,19 @@ func shell(_ cmd: String) throws -> String {
 @discardableResult
 func git(_ cmds: String...) throws -> String {
 	try shell(cmds.map { "git " + $0 }.joined(separator: " && "))
+}
+
+func id<A>(_ x: A) -> A { x }
+
+typealias MessageDecorator = @Sendable (Repo) -> @Sendable (String) -> String
+
+let taskDecorator: MessageDecorator = { (repo: Repo) in
+	repo.current
+		.flatMap { branch in
+			let s = branch.name.split(separator: "-")
+			let isUppercase: Bool = s.first.map { !$0.contains { !$0.isUppercase } } ?? false
+			return s.count < 2 || !isUppercase ? nil : Int(s[1]).map { i in "\(s[0])-\(i)" }
+		}
+		.map { task in { msg in "[\(task)] \(msg)" } }
+		?? id
 }
