@@ -15,11 +15,11 @@ struct giti: ParsableCommand {
 		case "load": try git("fetch --all -p")
 		case "send": try repo.send(noun: noun, force: force)
 		case "rec", "edit": try repo.rec(verb: verb, noun: noun, force: force, sending: sending)
+		case "mov": try git("rebase \(noun ?? "origin/main")" + (force ? " --force" : ""))
 		case "name": try git("branch -m \(noun ?? "main")")
 		case "mkbr": try git("checkout -b \(noun ?? "main")")
 		case "chbr": try git("checkout \(noun ?? "main")")
 		case "set": try git("reset --hard \(noun ?? "main")")
-		case "mov": try git("rebase \(noun ?? "main")" + (force ? " --force" : ""))
 		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
 		case let .some(verb): throw "Unknown verb: \(verb)"
 		case .none: break
