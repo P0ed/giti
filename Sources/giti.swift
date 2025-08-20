@@ -5,36 +5,32 @@ import ArgumentParser
 struct giti: ParsableCommand {
 	@Argument var verb: String?
 	@Argument var noun: String?
-	@Flag var force: Bool = false
+	@Flag(name: .shortAndLong) var force: Bool = false
+	@Flag(name: .shortAndLong) var sending: Bool = false
 
-	mutating func run() throws {
-		let _ = try Repo.status()
+	func run() throws {
+		let repo = try Repo()
 
 		switch verb {
 		case "load": try git("fetch --all -p")
-		case "send": try git("push origin \(noun ?? "HEAD")" + (force ? " -f" : ""))
+		case "send": try repo.send(noun: noun, force: force)
+		case "rec", "edit": try repo.rec(verb: verb, noun: noun, force: force, sending: sending)
 		case "name": try git("branch -m \(noun ?? "main")")
 		case "mkbr": try git("checkout -b \(noun ?? "main")")
 		case "chbr": try git("checkout \(noun ?? "main")")
 		case "set": try git("reset --hard \(noun ?? "main")")
-		case "mov": try git("rebase \(noun ?? "main")" + (force ? " -f" : ""))
+		case "mov": try git("rebase \(noun ?? "main")" + (force ? " --force" : ""))
 		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
-		case "rec", "edit": try rec(edit: verb == "edit", message: noun)
 		case let .some(verb): throw "Unknown verb: \(verb)"
 		case .none: break
 		}
 
 		try print(Repo())
 	}
-
-	func rec(edit: Bool, message: String?) throws {
-		let repo = try Repo()
-		let msg = taskDecorator(repo)(message ?? (edit ? repo.last : "WIP"))
-		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
-	}
 }
 
 struct Repo {
+	var status: String
 	var changes: String
 	var branches: [Branch]
 	var tree: [String]
@@ -53,11 +49,21 @@ struct Branch {
 
 extension Repo: CustomStringConvertible {
 
+	var description: String {
+		let changesCount = changes.count
+		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes\n" : ""
+
+		return chs + tree.joined(separator: "\n")
+	}
+}
+
+extension Repo {
+
 	var current: Branch? { branches.first(where: \.isCurrent) }
-	static func status() throws -> String { try git("status") }
 
 	init() throws {
 		self = try Repo(
+			status: git("status"),
 			changes: git("diff"),
 			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
 			tree: git("log --graph --oneline --decorate --all -36")
@@ -68,11 +74,16 @@ extension Repo: CustomStringConvertible {
 		)
 	}
 
-	var description: String {
-		let changesCount = changes.count
-		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes\n" : ""
+	func send(noun: String? = nil, force: Bool) throws {
+		try git("push origin \(noun ?? "HEAD")" + (force ? " --force" : ""))
+	}
 
-		return chs + tree.joined(separator: "\n")
+	func rec(verb: String?, noun: String?, force: Bool, sending: Bool) throws {
+		let edit = verb == "edit"
+		let msg = taskDecorator(self)(noun ?? (edit ? last : "WIP"))
+		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
+
+		if sending { try send(force: force) }
 	}
 }
 
