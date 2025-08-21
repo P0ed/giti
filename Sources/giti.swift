@@ -81,7 +81,7 @@ extension Repo {
 
 	func rec(verb: String?, noun: String?, force: Bool, sending: Bool) throws {
 		let edit = verb == "edit"
-		let msg = try taskDecorator(self)(noun ?? (edit ? last : generateCommitMessage()))
+		let msg = try decorator(noun ?? (edit ? last : generateCommitMessage()))
 		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
 
 		if sending { try send(force: force) }
@@ -130,15 +130,27 @@ var termsize: (rows: Int, cols: Int)? {
 
 func id<A>(_ x: A) -> A { x }
 
-typealias MessageDecorator = @Sendable (Repo) -> @Sendable (String) -> String
+extension Repo {
 
-let taskDecorator: MessageDecorator = { (repo: Repo) in
-	repo.current
-		.flatMap { branch in
+	private var task: String? {
+		current.flatMap { branch in
 			let s = branch.name.split(separator: "-")
-			let isUppercase: Bool = s.first.map { !$0.contains { !$0.isUppercase } } ?? false
-			return s.count < 2 || !isUppercase ? nil : Int(s[1]).map { i in "\(s[0])-\(i)" }
+			var isUppercase: Bool { s.count < 2 ? false : !s[0].contains { !$0.isUppercase } }
+			var isNumber: Bool { s.count < 2 ? false : !s[1].contains { !$0.isNumber } }
+			return isUppercase && isNumber ? "\(s[0])-\(s[1])" : nil
 		}
-		.map { task in { msg in "[\(task)] \(msg)" } }
-		?? id
+	}
+
+	var decorator: @Sendable (String) -> String {
+		ProcessInfo.processInfo.environment["GITI_DECORATOR"]
+			.flatMap { fmt in
+				fmt.split(separator: "%s", omittingEmptySubsequences: false).count == 3 ? fmt : nil
+			}
+			.flatMap { fmt in
+				task.map { task in
+					{ msg in String(format: fmt, task, msg) }
+				}
+			}
+			?? id
+	}
 }
