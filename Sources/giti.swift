@@ -12,25 +12,26 @@ struct giti: ParsableCommand {
 	func run() throws {
 		let repo = try Repo()
 
-		print(repo.decoratedMessage("x"))
+		switch verb {
+		case "load": try git("fetch --all -p")
+		case "send": try repo.send(noun: noun, force: force)
+		case "rec", "edit": try repo.rec(verb: verb, noun: noun, force: force, sending: sending)
+		case "mov": try git("rebase \(noun ?? "origin/main")" + (force ? " --force" : ""))
+		case "name": try git("branch -m \(noun ?? "main")")
+		case "mkbr": try git("checkout -b \(noun ?? "main")")
+		case "chbr": try git("checkout \(noun ?? "main")")
+		case "set": try git("reset --hard \(noun ?? "main")")
+		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
+		case "fmt": return if let noun {
+			UserDefaults.standard.messageFormat = noun
+		} else {
+			print(UserDefaults.standard.messageFormat)
+		}
+		case let .some(verb): throw "Unknown verb: \(verb)"
+		case .none: break
+		}
 
-//
-//		switch verb {
-//		case "load": try git("fetch --all -p")
-//		case "send": try repo.send(noun: noun, force: force)
-//		case "rec", "edit": try repo.rec(verb: verb, noun: noun, force: force, sending: sending)
-//		case "mov": try git("rebase \(noun ?? "origin/main")" + (force ? " --force" : ""))
-//		case "name": try git("branch -m \(noun ?? "main")")
-//		case "mkbr": try git("checkout -b \(noun ?? "main")")
-//		case "chbr": try git("checkout \(noun ?? "main")")
-//		case "set": try git("reset --hard \(noun ?? "main")")
-//		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
-//		case "fmt": UserDefaults.standard.set(noun, forKey: "message.format")
-//		case let .some(verb): throw "Unknown verb: \(verb)"
-//		case .none: break
-//		}
-//
-//		try print(Repo())
+		try print(Repo())
 	}
 }
 
@@ -60,6 +61,13 @@ extension Repo: CustomStringConvertible {
 		let chs = changesCount > 0 ? ["+ \(changesCount) unrecorded changes"] : []
 		let all = chs + tree + (0..<max(0, lines - tree.count - chs.count)).map { _ in "-" }
 		return all.prefix(lines).joined(separator: "\n")
+	}
+}
+
+extension UserDefaults {
+	var messageFormat: String {
+		get { string(forKey: "messageFormat") ?? "#MSG" }
+		set { set(newValue.contains("#MSG") ? newValue : nil, forKey: "messageFormat") }
 	}
 }
 
@@ -107,7 +115,6 @@ extension String: @retroactive Error {}
 func shell(_ cmd: String) throws -> String {
 	let pipe = Pipe()
 	let process = Process()
-	process.currentDirectoryURL = URL(filePath: "/Users/poed/Dev/giti")
 	process.executableURL = URL(fileURLWithPath: "/bin/zsh")
 	process.arguments = ["-c", cmd]
 	process.standardInput = nil
@@ -147,15 +154,10 @@ extension Repo {
 	}
 
 	func decoratedMessage(_ msg: String) -> String {
-		UserDefaults.standard.string(forKey: "message.format")
-			.flatMap { fmt in
-				fmt.ranges(of: "%s").count == 2 ? fmt : nil
-			}
-			.flatMap { fmt in
-				task.map { task in
-					String(format: fmt, task, msg)
-				}
-			}
-			?? msg
+		task.map { task in
+			UserDefaults.standard.messageFormat
+				.replacingOccurrences(of: "#TASK", with: task)
+				.replacingOccurrences(of: "#MSG", with: msg)
+		} ?? msg
 	}
 }
