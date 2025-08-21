@@ -3,35 +3,117 @@ import ArgumentParser
 import Darwin
 
 @main
-struct giti: ParsableCommand {
-	@Argument var verb: String?
-	@Argument var noun: String?
-	@Flag(name: .shortAndLong) var force: Bool = false
-	@Flag(name: .shortAndLong) var sending: Bool = false
+struct Giti: ParsableCommand {
 
-	func run() throws {
-		let repo = try Repo()
+	static let configuration = CommandConfiguration(
+		subcommands: [
+			Load.self, Send.self, Rec.self, Edit.self,
+			Mov.self, Name.self, MKBR.self, CHBR.self,
+			NOFF.self, FMT.self, List.self,
+		],
+		defaultSubcommand: List.self
+	)
 
-		switch verb {
-		case "load": try git("fetch --all -p")
-		case "send": try repo.send(noun: noun, force: force)
-		case "rec", "edit": try repo.rec(verb: verb, noun: noun, force: force, sending: sending)
-		case "mov": try git("rebase \(noun ?? "origin/main")" + (force ? " --force" : ""))
-		case "name": try git("branch -m \(noun ?? "main")")
-		case "mkbr": try git("checkout -b \(noun ?? "main")")
-		case "chbr": try git("checkout \(noun ?? "main")")
-		case "set": try git("reset --hard \(noun ?? "main")")
-		case "comb": try git("merge --no-ff --no-edit \(noun ?? "main")")
-		case "fmt": return if let noun {
-			UserDefaults.standard.messageFormat = noun
-		} else {
-			print(UserDefaults.standard.messageFormat)
+	struct Load: ParsableCommand {
+		func run() throws {
+			try git("fetch --all -p")
+			try print(Repo())
 		}
-		case let .some(verb): throw "Unknown verb: \(verb)"
-		case .none: break
-		}
+	}
+	struct Send: ParsableCommand {
+		@Flag(name: .shortAndLong) var force: Bool = false
+		@Argument var node: String?
 
-		try print(Repo())
+		func run() throws {
+			try git("push origin \(node ?? "HEAD")" + (force ? " --force" : ""))
+			try print(Repo())
+		}
+	}
+	struct Rec: ParsableCommand {
+		@Argument var message: String?
+		@Flag(name: .shortAndLong) var force: Bool = false
+		@Flag(name: .shortAndLong) var sending: Bool = false
+
+		func run() throws {
+			let repo = try Repo()
+			let msg = try repo.decoratedMessage(message ?? repo.generateMessage())
+			try git("add .", "commit -m \"\(msg)\"")
+
+			if sending {
+				try git("push origin HEAD" + (force ? " --force" : ""))
+			}
+			try print(Repo())
+		}
+	}
+	struct Edit: ParsableCommand {
+		@Argument var message: String?
+		@Flag(name: .shortAndLong) var force: Bool = false
+		@Flag(name: .shortAndLong) var sending: Bool = false
+
+		func run() throws {
+			let repo = try Repo()
+			let msg = message.map(repo.decoratedMessage) ?? repo.last
+			try git("add .", "commit --amend -m \"\(msg)\"")
+
+			if sending {
+				try git("push origin HEAD" + (force ? " --force" : ""))
+			}
+			try print(Repo())
+		}
+	}
+	struct Mov: ParsableCommand {
+		@Argument var node: String?
+		@Flag(name: .shortAndLong) var force: Bool = false
+
+		func run() throws {
+			try git("rebase \(node ?? "origin/main")" + (force ? " --force" : ""))
+			try print(Repo())
+		}
+	}
+	struct Name: ParsableCommand {
+		@Argument var node: String?
+
+		func run() throws {
+			try git("branch -m \(node ?? "main")")
+			try print(Repo())
+		}
+	}
+	struct CHBR: ParsableCommand {
+		@Argument var node: String?
+
+		func run() throws {
+			try git("checkout \(node ?? "main")")
+			try print(Repo())
+		}
+	}
+	struct MKBR: ParsableCommand {
+		@Argument var node: String?
+		func run() throws {
+			try git("checkout -b \(node ?? "main")")
+			try print(Repo())
+		}
+	}
+	struct NOFF: ParsableCommand {
+		@Argument var node: String?
+
+		func run() throws {
+			try git("merge --no-ff --no-edit \(node ?? "main")")
+			try print(Repo())
+		}
+	}
+	struct FMT: ParsableCommand {
+		@Argument var fmt: String?
+
+		func run() throws {
+			if let fmt {
+				UserDefaults.standard.messageFormat = fmt
+			} else {
+				print(UserDefaults.standard.messageFormat)
+			}
+		}
+	}
+	struct List: ParsableCommand {
+		func run() throws { try print(Repo()) }
 	}
 }
 
@@ -65,6 +147,7 @@ extension Repo: CustomStringConvertible {
 }
 
 extension UserDefaults {
+
 	var messageFormat: String {
 		get { string(forKey: "messageFormat") ?? "#MSG" }
 		set { set(newValue.contains("#MSG") ? newValue : nil, forKey: "messageFormat") }
@@ -87,21 +170,7 @@ extension Repo {
 		)
 	}
 
-	func send(noun: String? = nil, force: Bool) throws {
-		try git("push origin \(noun ?? "HEAD")" + (force ? " --force" : ""))
-	}
-
-	func rec(verb: String?, noun: String?, force: Bool, sending: Bool) throws {
-		let edit = verb == "edit"
-		let msg = try edit
-			? noun.map(decoratedMessage) ?? last
-			: decoratedMessage(noun ?? generateMessage())
-		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
-
-		if sending { try send(force: force) }
-	}
-
-	private func generateMessage() throws -> String {
+	func generateMessage() throws -> String {
 		let changedFiles = try git("diff --name-only HEAD")
 			.split(separator: "\n")
 			.map { path in URL(fileURLWithPath: String(path)).lastPathComponent }
@@ -139,8 +208,6 @@ var termsize: (rows: Int, cols: Int)? {
 	let r = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)
 	return r != 0 || w.ws_col == 0 || w.ws_row == 0 ? nil : (Int(w.ws_col), Int(w.ws_row))
 }
-
-func id<A>(_ x: A) -> A { x }
 
 extension Repo {
 
