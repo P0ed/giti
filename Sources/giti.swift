@@ -51,9 +51,9 @@ extension Repo: CustomStringConvertible {
 
 	var description: String {
 		let changesCount = changes.count
-		let chs = changesCount > 0 ? "+ \(changesCount) unrecorded changes\n" : ""
-
-		return chs + tree.joined(separator: "\n")
+		let chs = changesCount > 0 ? ["+ \(changesCount) unrecorded changes"] : []
+		let lines = chs + tree + (0..<max(0, 39 - tree.count - chs.count)).map { _ in "-" }
+		return lines.prefix(39).joined(separator: "\n")
 	}
 }
 
@@ -66,9 +66,9 @@ extension Repo {
 			status: git("status"),
 			changes: git("diff"),
 			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
-			tree: git("log --graph --oneline --decorate --all -36")
+			tree: git("log --graph --oneline --decorate --all -56")
 				.split(separator: "\n")
-				.prefix(36)
+				.filter { $0.contains("*") }
 				.map(String.init),
 			last: git("log -1 --pretty=%B")
 		)
