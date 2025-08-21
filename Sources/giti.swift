@@ -14,91 +14,84 @@ struct Giti: ParsableCommand {
 		defaultSubcommand: List.self
 	)
 
-	struct Load: ParsableCommand {
-		func run() throws {
+	protocol RepoCommand: ParsableCommand {
+		func run(repo: Repo) throws
+	}
+
+	struct Load: RepoCommand {
+		func run(repo: Repo) throws {
 			try git("fetch --all -p")
-			try print(Repo())
 		}
 	}
-	struct Send: ParsableCommand {
+	struct Send: RepoCommand {
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Argument var node: String?
 
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("push origin \(node ?? "HEAD")" + (force ? " --force" : ""))
-			try print(Repo())
 		}
 	}
-	struct Rec: ParsableCommand {
+	struct Rec: RepoCommand {
 		@Argument var message: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Flag(name: .shortAndLong) var sending: Bool = false
 
-		func run() throws {
-			let repo = try Repo()
+		func run(repo: Repo) throws {
 			let msg = try repo.decoratedMessage(message ?? repo.generateMessage())
 			try git("add .", "commit -m \"\(msg)\"")
 
 			if sending {
 				try git("push origin HEAD" + (force ? " --force" : ""))
 			}
-			try print(Repo())
 		}
 	}
-	struct Edit: ParsableCommand {
+	struct Edit: RepoCommand {
 		@Argument var message: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Flag(name: .shortAndLong) var sending: Bool = false
 
-		func run() throws {
-			let repo = try Repo()
+		func run(repo: Repo) throws {
 			let msg = message.map(repo.decoratedMessage) ?? repo.last
 			try git("add .", "commit --amend -m \"\(msg)\"")
 
 			if sending {
 				try git("push origin HEAD" + (force ? " --force" : ""))
 			}
-			try print(Repo())
 		}
 	}
-	struct Mov: ParsableCommand {
+	struct Mov: RepoCommand {
 		@Argument var node: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("rebase \(node ?? "origin/main")" + (force ? " --force" : ""))
-			try print(Repo())
 		}
 	}
-	struct Name: ParsableCommand {
+	struct Name: RepoCommand {
 		@Argument var node: String?
 
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("branch -m \(node ?? "main")")
-			try print(Repo())
 		}
 	}
-	struct CHBR: ParsableCommand {
+	struct CHBR: RepoCommand {
 		@Argument var node: String?
 
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("checkout \(node ?? "main")")
-			try print(Repo())
 		}
 	}
-	struct MKBR: ParsableCommand {
+	struct MKBR: RepoCommand {
 		@Argument var node: String?
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("checkout -b \(node ?? "main")")
-			try print(Repo())
 		}
 	}
-	struct NOFF: ParsableCommand {
+	struct NOFF: RepoCommand {
 		@Argument var node: String?
 
-		func run() throws {
+		func run(repo: Repo) throws {
 			try git("merge --no-ff --no-edit \(node ?? "main")")
-			try print(Repo())
 		}
 	}
 	struct FMT: ParsableCommand {
@@ -112,8 +105,16 @@ struct Giti: ParsableCommand {
 			}
 		}
 	}
-	struct List: ParsableCommand {
-		func run() throws { try print(Repo()) }
+	struct List: RepoCommand {}
+}
+
+extension Giti.RepoCommand {
+
+	func run(repo: Repo) throws {}
+
+	func run() throws {
+		try run(repo: Repo())
+		try print(Repo())
 	}
 }
 
