@@ -80,10 +80,17 @@ extension Repo {
 
 	func rec(verb: String?, noun: String?, force: Bool, sending: Bool) throws {
 		let edit = verb == "edit"
-		let msg = taskDecorator(self)(noun ?? (edit ? last : "WIP"))
+		let msg = try taskDecorator(self)(noun ?? (edit ? last : generateCommitMessage()))
 		try git("add .", "commit \(edit ? "--amend " : "")-m \"\(msg)\"")
 
 		if sending { try send(force: force) }
+	}
+
+	func generateCommitMessage() throws -> String {
+		let changedFiles = try git("diff --name-only HEAD")
+			.split(separator: "\n")
+			.map { path in URL(fileURLWithPath: String(path)).lastPathComponent }
+		return "Update \(changedFiles.joined(separator: ", "))"
 	}
 }
 
