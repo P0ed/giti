@@ -50,5 +50,8 @@ If no command is given, giti simply prints the commit graph of the current repos
 * 82ac15d Merge branch 'feature/ui'
 |\
 | * 2d7a9cd Improve layout
-...
+|/
+* f6dc2c9 Initial commit
+-
+-
 ```

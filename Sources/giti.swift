@@ -51,10 +51,7 @@ struct Branch {
 extension Repo: CustomStringConvertible {
 
 	var description: String {
-		var w = winsize()
-		let r = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)
-		let lines = r != 0 ? 23 : Int(w.ws_row) - 1
-
+		let lines = (termsize?.cols ?? 24) - 1
 		let changesCount = changes.count
 		let chs = changesCount > 0 ? ["+ \(changesCount) unrecorded changes"] : []
 		let all = chs + tree + (0..<max(0, lines - tree.count - chs.count)).map { _ in "-" }
@@ -73,7 +70,6 @@ extension Repo {
 			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
 			tree: git("log --graph --oneline --decorate --all -64")
 				.split(separator: "\n")
-				.filter { $0.contains("*") }
 				.map(String.init),
 			last: git("log -1 --pretty=%B")
 		)
@@ -124,6 +120,12 @@ func shell(_ cmd: String) throws -> String {
 @discardableResult
 func git(_ cmds: String...) throws -> String {
 	try shell(cmds.map { "git " + $0 }.joined(separator: " && "))
+}
+
+var termsize: (rows: Int, cols: Int)? {
+	var w = winsize()
+	let r = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)
+	return r != 0 ? nil : (Int(w.ws_col), Int(w.ws_row))
 }
 
 func id<A>(_ x: A) -> A { x }
