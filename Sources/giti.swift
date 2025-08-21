@@ -1,5 +1,6 @@
 import Foundation
 import ArgumentParser
+import Darwin
 
 @main
 struct giti: ParsableCommand {
@@ -50,10 +51,14 @@ struct Branch {
 extension Repo: CustomStringConvertible {
 
 	var description: String {
+		var w = winsize()
+		let r = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)
+		let lines = r != 0 ? 23 : Int(w.ws_row) - 1
+
 		let changesCount = changes.count
 		let chs = changesCount > 0 ? ["+ \(changesCount) unrecorded changes"] : []
-		let lines = chs + tree + (0..<max(0, 39 - tree.count - chs.count)).map { _ in "-" }
-		return lines.prefix(39).joined(separator: "\n")
+		let all = chs + tree + (0..<max(0, lines - tree.count - chs.count)).map { _ in "-" }
+		return all.prefix(lines).joined(separator: "\n")
 	}
 }
 
@@ -66,7 +71,7 @@ extension Repo {
 			status: git("status"),
 			changes: git("diff"),
 			branches: git("branch").split(separator: "\n").map { x in Branch(String(x)) },
-			tree: git("log --graph --oneline --decorate --all -56")
+			tree: git("log --graph --oneline --decorate --all -64")
 				.split(separator: "\n")
 				.filter { $0.contains("*") }
 				.map(String.init),
