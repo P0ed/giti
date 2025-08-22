@@ -9,16 +9,17 @@ struct Giti: ParsableCommand {
 		subcommands: [
 			Load.self, Send.self, Rec.self, Edit.self,
 			Mov.self, Name.self, MKBR.self, CHBR.self,
-			NOFF.self, FMT.self, List.self,
+			NOFF.self, List.self, FMT.self,
 		],
 		defaultSubcommand: List.self
 	)
 
-	protocol RepoCommand: ParsableCommand {
-		func run(repo: Repo) throws
-	}
-
 	struct Load: RepoCommand {
+		static let configuration = CommandConfiguration(
+			abstract: "Fetch all remote branches and prune deleted references",
+			usage: "giti load"
+		)
+		
 		func run(repo: Repo) throws {
 			try git("fetch --all -p")
 		}
@@ -26,6 +27,11 @@ struct Giti: ParsableCommand {
 	struct Send: RepoCommand {
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Argument var node: String?
+
+		static let configuration = CommandConfiguration(
+			abstract: "Push commits to the remote repository",
+			usage: "giti send [<node>] [--force]"
+		)
 
 		func run(repo: Repo) throws {
 			try git("push origin \(node ?? "HEAD")" + (force ? " --force" : ""))
@@ -35,6 +41,11 @@ struct Giti: ParsableCommand {
 		@Argument var message: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Flag(name: .shortAndLong) var sending: Bool = false
+
+		static let configuration = CommandConfiguration(
+			abstract: "Record changes by staging and committing them",
+			usage: "giti rec [<message>] [--force] [--sending]"
+		)
 
 		func run(repo: Repo) throws {
 			let msg = try repo.decoratedMessage(message ?? repo.generateMessage())
@@ -49,6 +60,11 @@ struct Giti: ParsableCommand {
 		@Argument var message: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 		@Flag(name: .shortAndLong) var sending: Bool = false
+		
+		static let configuration = CommandConfiguration(
+			abstract: "Edit the last commit by amending it with current changes",
+			usage: "giti edit [<message>] [--force] [--sending]"
+		)
 
 		func run(repo: Repo) throws {
 			let msg = message.map(repo.decoratedMessage) ?? repo.last
@@ -63,12 +79,22 @@ struct Giti: ParsableCommand {
 		@Argument var node: String?
 		@Flag(name: .shortAndLong) var force: Bool = false
 
+		static let configuration = CommandConfiguration(
+			abstract: "Move current branch by rebasing onto another branch",
+			usage: "giti mov [<node>] [--force]"
+		)
+
 		func run(repo: Repo) throws {
 			try git("rebase \(node ?? "origin/main")" + (force ? " --force" : ""))
 		}
 	}
 	struct Name: RepoCommand {
 		@Argument var node: String?
+
+		static let configuration = CommandConfiguration(
+			abstract: "Rename the current branch",
+			usage: "giti name [<node>]"
+		)
 
 		func run(repo: Repo) throws {
 			try git("branch -m \(node ?? "main")")
@@ -77,12 +103,23 @@ struct Giti: ParsableCommand {
 	struct CHBR: RepoCommand {
 		@Argument var node: String?
 
+		static let configuration = CommandConfiguration(
+			abstract: "Check out an existing branch",
+			usage: "giti chbr [<node>]"
+		)
+
 		func run(repo: Repo) throws {
 			try git("checkout \(node ?? "main")")
 		}
 	}
 	struct MKBR: RepoCommand {
 		@Argument var node: String?
+
+		static let configuration = CommandConfiguration(
+			abstract: "Create and check out a new branch",
+			usage: "giti mkbr [<node>]"
+		)
+		
 		func run(repo: Repo) throws {
 			try git("checkout -b \(node ?? "main")")
 		}
@@ -90,12 +127,28 @@ struct Giti: ParsableCommand {
 	struct NOFF: RepoCommand {
 		@Argument var node: String?
 
+		static let configuration = CommandConfiguration(
+			abstract: "Merge a branch with no fast-forward",
+			usage: "giti noff [<node>]"
+		)
+		
 		func run(repo: Repo) throws {
 			try git("merge --no-ff --no-edit \(node ?? "main")")
 		}
 	}
+	struct List: RepoCommand {
+		static let configuration = CommandConfiguration(
+			abstract: "Display repository status and commit tree (default command)",
+			usage: "giti [list]"
+		)
+	}
 	struct FMT: ParsableCommand {
 		@Argument var fmt: String?
+
+		static let configuration = CommandConfiguration(
+			abstract: "Get or set the commit message format template",
+			usage: "giti fmt [<format>]"
+		)
 
 		func run() throws {
 			if let fmt {
@@ -105,10 +158,13 @@ struct Giti: ParsableCommand {
 			}
 		}
 	}
-	struct List: RepoCommand {}
 }
 
-extension Giti.RepoCommand {
+protocol RepoCommand: ParsableCommand {
+	func run(repo: Repo) throws
+}
+
+extension RepoCommand {
 
 	func run(repo: Repo) throws {}
 
@@ -118,46 +174,7 @@ extension Giti.RepoCommand {
 	}
 }
 
-struct Repo {
-	var status: String
-	var changes: String
-	var branches: [Branch]
-	var tree: [String]
-	var last: String
-}
-
-struct Branch {
-	var name: String
-	var isCurrent: Bool
-
-	init(_ branch: String) {
-		name = branch.trimmingCharacters(in: CharacterSet(charactersIn: "* "))
-		isCurrent = branch.hasPrefix("*")
-	}
-}
-
-extension Repo: CustomStringConvertible {
-
-	var description: String {
-		let lines = (termsize?.cols ?? 24) - 1
-		let changesCount = changes.count
-		let chs = changesCount > 0 ? ["+ \(changesCount) unrecorded changes"] : []
-		let all = chs + tree + (0..<max(0, lines - tree.count - chs.count)).map { _ in "-" }
-		return all.prefix(lines).joined(separator: "\n")
-	}
-}
-
-extension UserDefaults {
-
-	var messageFormat: String {
-		get { string(forKey: "messageFormat") ?? "#MSG" }
-		set { set(newValue.contains("#MSG") ? newValue : nil, forKey: "messageFormat") }
-	}
-}
-
 extension Repo {
-
-	var current: Branch? { branches.first(where: \.isCurrent) }
 
 	init() throws {
 		self = try Repo(
@@ -180,52 +197,3 @@ extension Repo {
 }
 
 extension String: @retroactive Error {}
-
-@discardableResult
-func shell(_ cmd: String) throws -> String {
-	let pipe = Pipe()
-	let process = Process()
-	process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-	process.arguments = ["-c", cmd]
-	process.standardInput = nil
-	process.standardOutput = pipe
-	process.standardError = pipe
-
-	try process.run()
-	process.waitUntilExit()
-	let data = pipe.fileHandleForReading.readDataToEndOfFile()
-	let output = String(data: data, encoding: .utf8)!.trimmingCharacters(in: .newlines)
-
-	if process.terminationStatus == 0 { return output } else { throw output }
-}
-
-@discardableResult
-func git(_ cmds: String...) throws -> String {
-	try shell(cmds.map { "git " + $0 }.joined(separator: " && "))
-}
-
-var termsize: (rows: Int, cols: Int)? {
-	var w = winsize()
-	let r = ioctl(STDOUT_FILENO, TIOCGWINSZ, &w)
-	return r != 0 || w.ws_col == 0 || w.ws_row == 0 ? nil : (Int(w.ws_col), Int(w.ws_row))
-}
-
-extension Repo {
-
-	private var task: String? {
-		current.flatMap { branch in
-			let s = branch.name.split(separator: "-")
-			var isUppercase: Bool { s.count < 2 ? false : !s[0].contains { !$0.isUppercase } }
-			var isNumber: Bool { s.count < 2 ? false : !s[1].contains { !$0.isNumber } }
-			return isUppercase && isNumber ? "\(s[0])-\(s[1])" : nil
-		}
-	}
-
-	func decoratedMessage(_ msg: String) -> String {
-		task.map { task in
-			UserDefaults.standard.messageFormat
-				.replacingOccurrences(of: "#TASK", with: task)
-				.replacingOccurrences(of: "#MSG", with: msg)
-		} ?? msg
-	}
-}
